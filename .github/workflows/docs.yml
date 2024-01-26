@@ -1,24 +1,13 @@
 on:
   push:
     branches:
-      - "abao/dev"
+      - abao/dev
 name: docs
 
 jobs:
-  stylua:
-    name: stylua
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v3
-      - uses: JohnnyMorganz/stylua-action@v3
-        with:
-          version: latest
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --color always --check .
   docs:
     runs-on: ubuntu-latest
-    needs: [test, stylua]
+    needs: [stylua, lint-check, ruff, test_isolated, integration-tests]
     steps:
       - uses: actions/checkout@v3
       - name: panvimdoc
