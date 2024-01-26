@@ -1,8 +1,10 @@
+name: Docs
+
 on:
-  push:
-    branches:
-      - abao/dev
-name: docs
+  workflow_run:
+    workflows: [Lint, Build]
+    types: [completed]
+    branches: [abao/dev]
 
 jobs:
   docs:
@@ -18,6 +20,7 @@ jobs:
           treesitter: true
       - name: cat
         run: cat doc/neopyter.txt
+      - run: git status
       - name: Push changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
