@@ -1,12 +1,6 @@
-name: Build
+name: CI
 
-on:
-  push:
-    branches: 
-      - '*'
-  pull_request:
-    branches: 
-      - '*'
+on: [push, pull_request]
 
 jobs:
   stylua:

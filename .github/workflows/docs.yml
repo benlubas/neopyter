@@ -1,9 +1,0 @@
-name: Docs
-
-on:
-  workflow_run:
-    workflows: [lint, Build]
-    types: [completed]
-    branches: [abao/dev]
-
-jobs:
