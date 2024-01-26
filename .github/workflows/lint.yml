@@ -22,6 +22,10 @@ jobs:
         uses: actions/checkout@v3
       - name: Jupyter base setup
         uses: jupyterlab/maintainer-tools/.github/actions/base-setup@v1
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
       - name: Install jupyterlab
         run: python -m pip install -U "jupyterlab>=4.0.0,<5"
       - name: Lint the extension
