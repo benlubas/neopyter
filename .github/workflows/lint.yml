@@ -1,0 +1,38 @@
+---
+on: [push, pull_request]
+name: lint
+
+jobs:
+  stylua:
+    name: stylua
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - uses: JohnnyMorganz/stylua-action@v3
+        with:
+          version: latest
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --color always --check lua
+  lint-check:
+    name: lint-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Jupyter base setup
+        uses: jupyterlab/maintainer-tools/.github/actions/base-setup@v1
+      - name: Install jupyterlab
+        run: python -m pip install -U "jupyterlab>=4.0.0,<5"
+      - name: Lint the extension
+        run: |
+          set -eux
+          jlpm
+          jlpm run lint:check
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - uses: chartboost/ruff-action@v1
