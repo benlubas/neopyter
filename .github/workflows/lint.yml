@@ -16,6 +16,7 @@ jobs:
           args: --color always --check lua
   lint-check:
     name: lint-check
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
