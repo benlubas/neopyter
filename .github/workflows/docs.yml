@@ -9,7 +9,6 @@ on:
 jobs:
   docs:
     runs-on: ubuntu-latest
-    needs: [stylua, lint-check, ruff, test_isolated, integration-tests]
     steps:
       - uses: actions/checkout@v3
       - name: panvimdoc
