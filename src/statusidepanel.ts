@@ -44,7 +44,7 @@ export class StatusSidePanel extends SidePanel {
     let config: IConfig = {};
     const updateSettings = async (settings: ISettingRegistry.ISettings) => {
       config = settings.composite as IConfig;
-      console.log('updateSettings', config);
+      console.log('updateSettings2', config);
       const connectSettings = ServerConnection.makeSettings();
       const baseUrl = connectSettings.baseUrl;
       const url = URLExt.join(baseUrl, 'neopyter', 'update_settings');
@@ -57,14 +57,14 @@ export class StatusSidePanel extends SidePanel {
         connectSettings
       );
       console.log(await response.json());
-      this.updatePanel();
+      // this.updatePanel();
     };
     // Fetch the initial state of the settings.
     const settings = await this.settingRegistry.load('neopyter:labplugin');
     settings.changed.connect(() => {
       updateSettings(settings);
     });
-    updateSettings(settings);
+    // updateSettings(settings);
   }
   async restartServer() {}
 }

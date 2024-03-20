@@ -1,4 +1,3 @@
-local rpc = require("neopyter.rpc")
 local Notebook = require("neopyter.jupyter.notebook")
 local utils = require("neopyter.utils")
 local async_wrap = require("neopyter.asyncwrap")
@@ -28,9 +27,11 @@ function JupyterLab:new(opts)
     local config = require("neopyter").config
     local RpcClient
     if config.rpc_client == "block" then
-        RpcClient = rpc.BlockRpcClient
+        RpcClient = require("neopyter.rpc.blockclient")
+    elseif config.rpc_client == "websocket" then
+        RpcClient = require("neopyter.rpc.wsserverclient")
     else
-        RpcClient = rpc.AsyncRpcClient
+        RpcClient = require("neopyter.rpc.asyncclient")
     end
     o.client = RpcClient:new({
         address = opts.address,
@@ -44,6 +45,7 @@ end
 function JupyterLab:attach(address)
     self.client:connect(address)
     if not self.client:is_connecting() then
+        print("connect failed")
         return false
     end
     local config = require("neopyter").config
@@ -84,8 +86,14 @@ end
 ---@return boolean
 function JupyterLab:is_connecting()
     local status = self.client:is_connecting()
-    assert(status == (self.augroup ~= nil), "autogroup status shold keep same with client")
-    return status
+    assert(
+        status == (self.augroup ~= nil),
+        "connect status and input watch:is_connecting="
+            .. tostring(status)
+            .. ", input watch="
+            .. tostring(self.augroup)
+    )
+    return self.augroup ~= nil
 end
 
 function JupyterLab:_get_buf_local_path(buf)

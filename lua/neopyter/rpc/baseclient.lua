@@ -34,6 +34,12 @@ function RpcClient:is_connecting()
     assert(false, "not implement")
 end
 
+--- check rpc client health
+---@return boolean
+function RpcClient:checkhealth()
+    assert(false, "not implement")
+end
+
 ---@see vim.rpcrequest
 ---@param method string
 ---@param ... unknown

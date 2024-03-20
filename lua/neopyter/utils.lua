@@ -172,4 +172,16 @@ function M.parse_content(lines, filetype)
     return cells
 end
 
+---@param address string
+function M.parse_address(address)
+    local host, port = address:match("^(.-):(%d+)$")
+    return host, tonumber(port)
+end
+
+function M.hexstr2str(hexstr)
+    hexstr:gsub("..", function(hexval)
+        return string.char(tonumber(hexval, 16))
+    end)
+end
+
 return M

@@ -13,45 +13,54 @@ function bytesToBase64(bytes: Uint8Array) {
   return btoa(binString);
 }
 
+// const sleep = async (timeout: number) => {
+//   return await new Promise(resolve => {
+//     setTimeout(resolve, timeout);
+//   });
+// };
+//
 export class WebsocketTransport extends BaseTransport {
-  private websocket: WebSocket;
-  private readableStream: ReadableStream;
+  private websocket?: WebSocket;
+  private readableStream?: ReadableStream;
   constructor(
     server: RpcServer,
-    private url: string
+    private url: string,
+    private autoRetry = false
   ) {
     super(server);
+    this.start();
+  }
+
+  private async start() {
+    console.log('try connect to server');
     this.websocket = new WebSocket(this.url);
-    this.websocket.binaryType = 'arraybuffer';
+    this.websocket!.binaryType = 'arraybuffer';
     this.readableStream = new ReadableStream({
       start: controller => {
         // console.log('start');
-        this.websocket.addEventListener('open', event => {
+        this.websocket!.addEventListener('open', event => {
           this.onOpen(event);
         });
-        this.websocket.addEventListener('message', event => {
+        this.websocket!.addEventListener('message', event => {
           const buf = base64ToBytes(event.data);
           controller.enqueue(buf);
         });
 
-        this.websocket.addEventListener('error', event => {
+        this.websocket!.addEventListener('error', event => {
           this.onError(event);
           throw event;
         });
-        this.websocket.addEventListener('close', event => {
+        this.websocket!.addEventListener('close', event => {
           this.onClose(event);
           controller.close();
         });
       }
     });
-    setTimeout(async () => {
-      for await (const message of deserializeStream(this.readableStream)) {
-        // console.log(message);
-        this.onRead(message);
-      }
-    }, 0);
+    for await (const message of deserializeStream(this.readableStream)) {
+      // console.log(message);
+      this.onRead(message);
+    }
   }
-
   async onRead(message: Message) {
     switch (message.type) {
       case MessageType.Request:
@@ -66,16 +75,21 @@ export class WebsocketTransport extends BaseTransport {
   }
 
   sendData(data: Uint8Array): void {
-    this.websocket.send(bytesToBase64(data));
+    this.websocket!.send(bytesToBase64(data));
   }
 
   protected onOpen(_event: Event) {
-    console.log(`Connection to neopyter jupyter server by websocket ${this.websocket.url}`);
+    console.log(`Connection to neopyter jupyter server by websocket ${this.websocket!.url}`);
   }
   protected onError(event: Event) {
     console.error('Websocket error', event);
   }
   protected onClose(_event: Event) {
-    console.log(`DisConnection to neopyter jupyter server by websocket ${this.websocket.url}`);
+    console.log(`DisConnection to neopyter jupyter server by websocket ${this.websocket!.url}`);
+    this.websocket = undefined;
+    this.readableStream = undefined;
+    if (this.autoRetry) {
+      this.start();
+    }
   }
 }

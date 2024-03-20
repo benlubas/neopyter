@@ -10,6 +10,7 @@ local utils = require("neopyter.utils")
 ---@field rpc_client
 ---| "'async'" # AsyncRpcClient, default
 ---| "'block'" # BlockRpcClient
+---| "'websocket'" # WebsocketServerClient
 ---@field filename_mapper fun(ju_path:string):string
 ---@field on_attach? fun(bufnr:number)
 ---@field jupyter neopyter.JupyterOption

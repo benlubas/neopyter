@@ -1,4 +1,4 @@
-import { Kernel, ServerConnection } from '@jupyterlab/services';
+import { Kernel } from '@jupyterlab/services';
 import { URLExt } from '@jupyterlab/coreutils';
 import { ReadonlyPartialJSONObject } from '@lumino/coreutils';
 import { ILayoutRestorer, JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
@@ -52,8 +52,9 @@ const neopyterPlugin: JupyterFrontEndPlugin<void> = {
       restorer.add(sidebar, '@neopyter/graphsidebar');
     }
 
-    const settings = ServerConnection.makeSettings();
-    const url = URLExt.join(settings.wsUrl, 'neopyter', 'channel');
+    // const settings = ServerConnection.makeSettings();
+    // const url = URLExt.join(settings.wsUrl, 'neopyter', 'channel');
+    const url = URLExt.join('ws://127.0.0.1:9002');
     const getCurrentNotebook = () => {
       const widget = nbtracker.currentWidget as NotebookPanel;
       app.shell.activateById(widget.id);
@@ -324,7 +325,7 @@ const neopyterPlugin: JupyterFrontEndPlugin<void> = {
     Object.assign(dispatcher, notebookDispatcher);
     Object.assign(dispatcher, cellDispatcher);
     const server = new RpcServer(dispatcher);
-    server.start(WebsocketTransport, url);
+    server.start(WebsocketTransport, url, true);
   }
 };
 

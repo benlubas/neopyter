@@ -25,13 +25,6 @@ function AsyncRpcClient:new(o)
     return o
 end
 
----@package
----@param address string
-local function parse_address(address)
-    local host, port = address:match("^(.-):(%d+)$")
-    return host, tonumber(port)
-end
-
 ---comment
 ---@param address? string
 ---@async
@@ -39,8 +32,8 @@ function AsyncRpcClient:connect(address)
     self.address = address or self.address
     assert(self.tcp_client == nil, "current connection exists, can't call connect, please disconnect first")
     assert(self.address, "Rpc client address is empty")
-    self.tcp_client = vim.loop.new_tcp()
-    local host, port = parse_address(self.address)
+    self.tcp_client = vim.uv.new_tcp()
+    local host, port = utils.parse_address(self.address)
     local err = a.uv.tcp_connect(self.tcp_client, host, port)
     if err ~= nil then
         utils.notify_error(string.format("Connect rpc server [%s] failed", self.address))

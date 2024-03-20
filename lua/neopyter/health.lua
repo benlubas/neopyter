@@ -3,7 +3,9 @@ local neopyter = require("neopyter")
 local jupyter = require("neopyter.jupyter")
 
 function M.check()
+    vim.health.info(string.format("Neopyter client type: %s", neopyter.config.rpc_client))
     local status = jupyter.jupyterlab:is_connecting()
+
     if status then
         vim.health.info(string.format("Neopyter status: connected"))
         vim.health.info(string.format("address %s", jupyter.jupyterlab.client.address))
@@ -24,6 +26,8 @@ function M.check()
     else
         vim.health.info(string.format("Neopyter status: disconnected"))
     end
+    vim.health.start("Client")
+    jupyter.jupyterlab.client:checkhealth()
 end
 
 return M
