@@ -52,7 +52,6 @@ function source:complete(params, callback)
         local offset = math.min(params.offset, #code)
         notebook:partial_sync(params.context.cursor.row, params.context.cursor.row, params.context.cursor.row)
         local cell_idx = notebook:get_cursor_cell_pos()
-        if not cell_idx then return {} end
 
         local items = jupyter.notebook:complete({
             source = code,

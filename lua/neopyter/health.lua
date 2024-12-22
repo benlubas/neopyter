@@ -74,13 +74,13 @@ function M.check()
                     msg = string.format(
                         "%s %-30s %-10s %-10s %s",
                         select_mark,
-                        notebook.local_path,
+                        notebook.full_path,
                         notebook:is_attached(),
                         nbconnect,
                         notebook.remote_path
                     )
                 else
-                    msg = string.format("%s %-30s %-10s false", select_mark, notebook.local_path, notebook:is_attached(), nbconnect)
+                    msg = string.format("%s %-30s %-10s false", select_mark, notebook.full_path, notebook:is_attached(), nbconnect)
                 end
 
                 health.info(msg)

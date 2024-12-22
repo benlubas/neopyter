@@ -2,6 +2,8 @@ local a = require("plenary.async")
 local utils = require("neopyter.utils")
 local async_wrap = require("neopyter.asyncwrap")
 local api = a.api
+local log = require("neopyter.logger")
+local parsers = require("neopyter.parsers.common")
 
 ---@alias neopyter.ScrollToAlign 'center' | 'top-center' | 'start' | 'end'| 'auto' | 'smart'
 
@@ -19,9 +21,12 @@ local api = a.api
 ---@class neopyter.Notebook
 ---@field private client neopyter.RpcClient
 ---@field bufnr number
----@field local_path string relative path
+---@field full_path string absolute path to file
 ---@field remote_path string? #remote ipynb path
+---@field temp boolean? #is this a temp file? if so, we will clean it up when we detach
+---@field parser neopyter.FileParser
 ---@field private cells neopyter.Cell[]
+---@field private kernel string?
 ---@field private active_cell_index number
 ---@field private augroup? number
 ---@field private _is_exist boolean
@@ -33,7 +38,7 @@ Notebook.__index = Notebook
 ---@class neopyter.NewNotebokOption
 ---@field client neopyter.RpcClient
 ---@field bufnr number
----@field local_path string
+---@field full_path string
 
 ---Notebook Constructor, please don't call directly, obtain from jupyterlab
 ---@param o neopyter.NewNotebokOption
@@ -41,7 +46,37 @@ Notebook.__index = Notebook
 function Notebook:new(o)
     local obj = setmetatable(o, self) --[[@as neopyter.Notebook]]
     local config = require("neopyter").config
-    obj.remote_path = config.filename_mapper(obj.local_path)
+    obj.temp = config.auto_temp_file
+    if obj.temp then
+        obj.remote_path = config.temp_path(obj.full_path)
+    else
+        obj.remote_path = config.open_filename_mapper(obj.full_path)
+    end
+
+    local parser_style = ""
+    for pat, parser in pairs(config.file_patterns) do
+        if vim.regex(vim.fn.glob2regpat(pat)):match_str(obj.full_path) then
+            parser_style = parser
+            break
+        end
+    end
+    if parser_style == "" then
+        for pat, parser in pairs(config.manual_file_patterns) do
+            if vim.regex(vim.fn.glob2regpat(pat)):match_str(obj.full_path) then
+                parser_style = parser
+                break
+            end
+        end
+    end
+
+    local ok, parser = pcall(require, "neopyter.parsers." .. parser_style)
+    if not ok then
+        log.error(("Failed to find parser: `%s` for file `%s`\nDefaulting to `percent`"):format(config.parser, obj.full_path))
+        parser = require("neopyter.file_formats.percent")
+    end
+
+    obj.parser = parser
+
     return obj
 end
 
@@ -54,11 +89,14 @@ function Notebook:attach()
             utils.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
                 buffer = self.bufnr,
                 callback = function()
+                    if not config.jupyter.scroll.toggle then
+                        return
+                    end
                     if not self:safe_sync() then
                         return
                     end
                     local index = self:get_cursor_cell_pos()
-                    if index ~= self.active_cell_index then
+                    if index and index ~= self.active_cell_index then
                         -- cache
                         self.active_cell_index = index
                         self:activate_cell(index - 1)
@@ -69,15 +107,18 @@ function Notebook:attach()
             })
         end
 
-        utils.nvim_create_autocmd({ "BufWritePre" }, {
-            buffer = self.bufnr,
-            callback = function()
-                if self:safe_sync() then
-                    self:save()
-                end
-            end,
-            group = self.augroup,
-        })
+        if config.jupyter.auto_save then
+            utils.nvim_create_autocmd({ "BufWritePre" }, {
+                buffer = self.bufnr,
+                callback = function()
+                    if self:safe_sync() then
+                        self:save()
+                    end
+                end,
+                group = self.augroup,
+            })
+        end
+
         api.nvim_buf_attach(self.bufnr, false, {
             on_lines = function(_, _, _, start_row, old_end_row, new_end_row, _)
                 a.run(function()
@@ -104,8 +145,10 @@ end
 --- detach autocmd
 function Notebook:detach()
     api.nvim_del_augroup_by_id(self.augroup)
-    -- detach buf
     self.augroup = nil
+    if self.temp then
+        self:delete()
+    end
 end
 
 --- check attach status
@@ -135,8 +178,7 @@ function Notebook:safe_sync()
 end
 
 function Notebook:update_cells()
-    local lines = api.nvim_buf_get_lines(self.bufnr, 0, -1, true)
-    self.cells = utils.parse_content(lines)
+    self.cells, self.kernel = self.parser.parse(self.bufnr)
 end
 
 ---internal request
@@ -148,7 +190,7 @@ function Notebook:_request(method, ...)
     return self.client:request(method, self.remote_path, ...)
 end
 
----is exist corresponding notebook in remote server
+---Does corresponding notebook exist in remote server
 function Notebook:is_exist()
     return self:_request("isFileExist")
 end
@@ -160,7 +202,21 @@ function Notebook:is_open()
 end
 
 function Notebook:create_new()
-    return self:_request("createNew")
+    self.creating = true
+    self:update_cells()
+    if not self.kernel then
+        self.kernel = parsers.fallback_kernel(self.bufnr)
+    end
+    local kernel_model = {
+        name = self.kernel
+    }
+    local res = self:_request("createNew", kernel_model)
+    self.creating = nil
+    return res
+end
+
+function Notebook:delete()
+    return self:_request("deleteFile")
 end
 
 function Notebook:open()
@@ -169,6 +225,14 @@ end
 
 function Notebook:open_or_reveal()
     return self:_request("openOrReveal")
+end
+
+function Notebook:focus()
+    if self:is_open() then
+        self:activate()
+    else
+        self:open_or_reveal()
+    end
 end
 
 function Notebook:activate()
@@ -192,6 +256,10 @@ function Notebook:get_cell_num()
     return self:_request("getCellNum")
 end
 
+function Notebook:get_kernel_id()
+    return self:_request("getKernelId")
+end
+
 function Notebook:get_cursor_pos()
     local winid = utils.buf2winid(self.bufnr)
 
@@ -207,20 +275,15 @@ function Notebook:set_cursor_pos(pos)
 end
 
 ---get current cell of cursor position, start from 1
----@return number #index of cell
----@return number #row of cursor in cell
----@return number #col of cursor in cell
+---@return number? #index of cell
 function Notebook:get_cursor_cell_pos()
-    local row, col = self:get_cursor_pos()
-    local line_count = 0
+    local row, _ = self:get_cursor_pos()
     for index, cell in ipairs(self.cells) do
-        local next_count = line_count + #cell.lines
-        if next_count >= row then
-            return index, row - line_count, col
+        if cell.start_line <= row and cell.end_line >= row then
+            return index
         end
-        line_count = next_count
     end
-    return #self.cells, 0, 0
+    return nil
 end
 
 ---get cell by index
@@ -245,8 +308,8 @@ function Notebook:partial_sync(start_row, old_end_row, new_end_row)
     ---TODO:real partial sync via treesitter query
     --- need support custom directive via vim.treesitter.query.add_directive({all=true})
     assert(self.cells ~= nil, "must exist cells")
-    local lines = api.nvim_buf_get_lines(self.bufnr, 0, -1, true)
-    local new_cells = utils.parse_content(lines)
+    local new_cells
+    new_cells, _ = self.parser.parse(self.bufnr)
 
     -- new cells length
     local ncl = #new_cells

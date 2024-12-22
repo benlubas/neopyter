@@ -9,7 +9,8 @@ local __filepath__ = debug.getinfo(1).source:sub(2)
 
 ---@class neopyter.JupyterOption
 ---@field auto_activate_file? boolean
----@field scroll? {enable?: boolean, align?: neopyter.ScrollToAlign}
+---@field scroll? {enable?: boolean, align?: neopyter.ScrollToAlign, toggle?: boolean}
+---@field auto_save? boolean
 
 ---@class neopyter.JupyterLab
 ---@field client neopyter.RpcClient
@@ -54,23 +55,37 @@ function JupyterLab:attach()
     local config = require("neopyter").config
     self.augroup = api.nvim_create_augroup("neopyter-jupyterlab", { clear = true })
     assert(self.augroup ~= nil, "autogroup failed")
+    local patterns = vim.tbl_keys(config.file_patterns)
+    for p, _ in pairs(config.manual_file_patterns) do
+        table.insert(patterns, p)
+    end
     utils.nvim_create_autocmd({ "BufWinEnter" }, {
         group = self.augroup,
-        pattern = config.file_pattern,
+        pattern = "*",
         callback = function(event)
-            self:_on_bufwinenter(event.buf)
+            for _, pat in ipairs(patterns) do
+                if vim.regex(vim.fn.glob2regpat(pat)):match_str(event.file) then
+                    self:_on_bufwinenter(event.buf)
+                    break
+                end
+            end
         end,
     })
     utils.nvim_create_autocmd({ "BufUnload" }, {
         group = self.augroup,
-        pattern = config.file_pattern,
+        pattern = "*",
         callback = function(event)
-            self:_on_buf_unloaded(event.buf)
+            for _, pat in ipairs(patterns) do
+                if vim.regex(vim.fn.glob2regpat(pat)):match_str(event.file) then
+                    self:_on_buf_unloaded(event.buf)
+                    break
+                end
+            end
         end,
     })
     api.nvim_exec_autocmds("BufWinEnter", {
         group = self.augroup,
-        pattern = config.file_pattern,
+        pattern = self:get_buf_path(0),
     })
 end
 
@@ -97,21 +112,30 @@ end
 ---@param address? string address of neopyter server
 function JupyterLab:connect(address)
     local config = require("neopyter").config
+    local patterns = vim.tbl_keys(config.file_patterns)
+    for p, _ in pairs(config.manual_file_patterns) do
+        table.insert(patterns, p)
+    end
     self.client:connect(address)
     if self.client:is_connecting() then
         local jupyterlab_version = self:get_jupyterlab_extension_version()
-        local nvim_version = self:get_nvim_plugin_version()
-        if jupyterlab_version ~= nil and nvim_version ~= jupyterlab_version then
-            utils.notify_error(
-                string.format("The version of jupyterlab extension(%s) and neovim plugin(%s) do not match", jupyterlab_version, nvim_version)
-            )
+        local neovim_version = self:get_nvim_plugin_version()
+        if jupyterlab_version then
+            local jl_version = vim.version.parse(jupyterlab_version)
+            local nvim_version = vim.version.parse(neovim_version)
+            if jl_version and nvim_version and (jl_version.major ~= nvim_version.major or jl_version.minor ~= nvim_version.minor) then
+                utils.notify_error(
+                    string.format("The major or minor version of jupyterlab extension(%s) and neovim plugin(%s) do not match", jupyterlab_version,
+                        neovim_version)
+                )
+            end
         end
     end
 
-    api.nvim_exec_autocmds("BufWinEnter", {
-        group = self.augroup,
-        pattern = config.file_pattern,
-    })
+    -- api.nvim_exec_autocmds("BufWinEnter", {
+    --     group = self.augroup,
+    --     pattern = self:get_buf_path(0),
+    -- })
 end
 
 function JupyterLab:disconnect()
@@ -122,30 +146,24 @@ function JupyterLab:is_connecting()
     return self.client:is_connecting()
 end
 
-function JupyterLab:_get_buf_local_path(buf)
-    local file_path = api.nvim_buf_get_name(buf)
-
-    if utils.is_absolute(file_path) then
-        file_path = utils.relative_to(file_path, vim.fn.getcwd())
-    end
-    return file_path
+function JupyterLab:get_buf_path(buf)
+    return api.nvim_buf_get_name(buf)
 end
 
 ---if not exists, create with buf
 ---@param buf number
 function JupyterLab:_on_bufwinenter(buf)
     local jupyter = require("neopyter.jupyter")
-    local file_path = JupyterLab:_get_buf_local_path(buf)
+    local file_path = JupyterLab:get_buf_path(buf)
     local notebook = self.notebook_map[file_path]
     if notebook == nil then
         notebook = Notebook:new({
             client = self.client,
             bufnr = buf,
-            local_path = file_path,
+            full_path = file_path,
         })
         self.notebook_map[file_path] = notebook
         jupyter.notebook = notebook
-        notebook:attach()
         local config = require("neopyter").config
         if type(config.on_attach) == "function" then
             vim.schedule(function()
@@ -155,17 +173,21 @@ function JupyterLab:_on_bufwinenter(buf)
     end
     jupyter.notebook = notebook
 
-    if self:is_connecting() and notebook:is_exist() then
-        if notebook:is_open() then
-            notebook:activate()
-        else
-            notebook:open_or_reveal()
+    if self:is_connecting() then
+        local exists = notebook:is_exist()
+        if not notebook.temp and not exists then
+            return
+        elseif notebook.temp and not exists and not notebook.creating then
+            notebook:create_new()
         end
+        notebook:attach()
+        notebook:focus()
+        return
     end
 end
 
 function JupyterLab:_on_buf_unloaded(buf)
-    local file_path = self:_get_buf_local_path(buf)
+    local file_path = self:get_buf_path(buf)
     local notebook = self.notebook_map[file_path]
     if notebook == nil then
         return
@@ -208,8 +230,8 @@ end
 ---@field type? `notebook`|`file`
 --
 ---create new notebook, and selected it
-function JupyterLab:createNew(ipynb_path, widget_name, kernel)
-    return self.client:request("createNew", ipynb_path, widget_name, kernel)
+function JupyterLab:createNew(ipynb_path, kernel)
+    return self.client:request("createNew", ipynb_path, kernel)
 end
 
 ---get current notebook of jupyter lab

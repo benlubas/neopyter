@@ -1,5 +1,5 @@
 local a = require("plenary.async")
-local logger = require("neopyter.logger")
+local log = require("neopyter.logger")
 
 ---wrap a class's member function,
 ---@param cls table
@@ -15,11 +15,11 @@ local function async_wrap(cls, ignored_methods)
         end
         return false
     end
-    logger.log(string.format("inject class %s start", vim.inspect(cls)))
+    log.debug(string.format("inject class %s start", vim.inspect(cls)))
     local injected_methods = {}
     for key, value in pairs(cls) do
         if not key:match("^_%w.+$") and not is_ignored(key) and type(value) == "function" then
-            logger.log(string.format("inject method [%s]", key))
+            log.trace(string.format("inject method [%s]", key))
             table.insert(injected_methods, key)
             cls[key] = function(...)
                 local thread = coroutine.running()
@@ -27,12 +27,12 @@ local function async_wrap(cls, ignored_methods)
                     return value(...)
                 else
                     local params = { ... }
-                    logger.log(string.format("Call api [%s] from main thread directly", key))
+                    log.debug(string.format("Call api [%s] from main thread directly", key))
                     return a.run(function()
                         return value(unpack(params))
                     end, function(result)
-                        print(string.format("Call api [%s] complete from main thread directly:%s", key, result))
-                        logger.log(string.format("Call api [%s] complete from main thread directly", key))
+                        log.info(string.format("Call api [%s] complete from main thread directly:%s", key, result))
+                        log.debug(string.format("Call api [%s] complete from main thread directly", key))
                         return "Bad"
                     end)
                 end
@@ -40,7 +40,7 @@ local function async_wrap(cls, ignored_methods)
         end
     end
     cls.__injected_methods = injected_methods
-    logger.log(string.format("inject class end", vim.inspect(cls)))
+    log.debug(string.format("inject class end", vim.inspect(cls)))
     return cls
 end
 return async_wrap

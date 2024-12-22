@@ -1,7 +1,7 @@
 -- Code mostly based on koenverburg/peepsight.nvim
-local utils = require("neopyter.utils")
 local query = require("nvim-treesitter.query")
 local textobjects = require("neopyter.textobjects")
+local log = require("neopyter.logger")
 
 ---@class neopyter.HighlightOption
 ---@field enable boolean
@@ -20,10 +20,11 @@ function M.setup(opts)
         local config = require("neopyter").config
         local augroup = vim.api.nvim_create_augroup("neopyter-highlighter", {})
         local updated = false
+        local pattern = vim.tbl_keys(config.file_patterns)
 
         if opts.shortsighted then
             vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "WinScrolled" }, {
-                pattern = config.file_pattern,
+                pattern = pattern,
                 callback = function()
                     updated = false
                     vim.defer_fn(function()
@@ -37,7 +38,7 @@ function M.setup(opts)
             })
         else
             vim.api.nvim_create_autocmd({ "BufWinEnter", "BufWritePost", "TextChanged", "TextChangedI" }, {
-                pattern = config.file_pattern,
+                pattern = pattern,
                 callback = function()
                     updated = false
                     vim.defer_fn(function()
@@ -110,7 +111,7 @@ function M.highlight_capture(captures, hl_group, mode, include_whitespace, prior
         if node then
             M.highlight_node(node, hl_group, mode, include_whitespace, priority)
         else
-            print("Error textobjects query:", vim.inspect(match))
+            log.error("Error textobjects query:\n".. vim.inspect(match))
         end
     end
 end
@@ -125,7 +126,6 @@ function M.highlight_node(node, hl_group, mode, include_whitespace, priority)
     local range = { node:range(false) }
     if include_whitespace then
         range = textobjects.include_whitespace(0, range, mode)
-        -- print(vim.inspect(range))
     end
     local start_row, start_col, end_row, end_col = unpack(range)
 
